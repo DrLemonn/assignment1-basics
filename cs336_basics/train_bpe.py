@@ -119,7 +119,7 @@ def train_bpe(
         bytes_pair_to_pretokens: dict[tuple[bytes, bytes], set[tuple[bytes,...]]] = defaultdict(set)
 
         for pretoken, freq in pretoken_freq.items():
-            for i in range(len(pretoken - 1)):
+            for i in range(len(pretoken) - 1 ):
                 bytes_pair_freq[pretoken[i:i+2]] += freq
                 bytes_pair_to_pretokens[pretoken[i:i+2]].add(pretoken)
         
@@ -130,12 +130,43 @@ def train_bpe(
             merges.append(to_merge)
             vocab[len(vocab)] = to_merge[0] + to_merge[1]
 
-            affected_pretokens = bytes_pair_to_pretokens[to_merge]
+            affected_pretokens = list(bytes_pair_to_pretokens[to_merge])
+            
+            for affected_pretoken in affected_pretokens:
+                i = 0
+                new_pretoken = []
+                while i < len(affected_pretoken):
+                    if affected_pretoken[i:i+2] == to_merge:
+                        new_pretoken.append(to_merge[0] + to_merge[1])
+                        i += 2
+                    else:
+                        new_pretoken.append(affected_pretoken[i])
+                        i += 1
+                
+                new_pretoken = tuple(new_pretoken)
 
+                pretoken_freq[new_pretoken] = pretoken_freq[affected_pretoken]
+                del pretoken_freq[affected_pretoken]
+
+                temp_freq = pretoken_freq[new_pretoken]
+                for i in range(len(affected_pretoken) - 1):
+                    pair = affected_pretoken[i:i+2]
+
+                    bytes_pair_freq[pair] -= temp_freq
+                    if bytes_pair_freq[pair] == 0:
+                        del bytes_pair_freq[pair]
+                    
+                    bytes_pair_to_pretokens[pair].discard(affected_pretoken)
+                    if len(bytes_pair_to_pretokens[pair]) == 0:
+                        del bytes_pair_to_pretokens[pair]
+
+                for i in range(len(new_pretoken) - 1):
+                    pair = new_pretoken[i:i+2]
+                    bytes_pair_freq[pair] += temp_freq    
+                    bytes_pair_to_pretokens[pair].add(new_pretoken)
         
+        return vocab, merges
 
-
-        
 
 if __name__ == "__main__":
     train_bpe("data/TinyStoriesV2-GPT4-valid.txt", 500, special_tokens=["<|endoftext|>"])
